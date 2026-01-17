@@ -1,0 +1,171 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Oct 13 20:17:28 2025
+
+@author: HP
+"""
+
+# -*- coding: utf-8 -*-
+"""
+Matrix <--> Spherical Angles (3 pairs) <--> Eigenvalues
+"""
+
+import numpy as np
+import math
+
+def main():
+    my_eig_sys = Eigensystem()
+    
+    choice = int(input("Enter 1 to provide a matrix or 2 to provide angles and eigenvalues: "))
+    
+    if choice == 1:
+        # User provides a symmetric matrix
+        my_eig_sys.matrix()
+        # Compute eigen decomposition
+        my_eig_sys.eigens()
+        # Verify
+        my_eig_sys.products()
+        # Extract orientation angles (3 pairs: polar, azimuth)
+        my_eig_sys.orientation()
+    else:
+        # User provides 3 pairs of angles + 3 eigenvalues
+        my_eig_sys.spherical()
+
+class Eigensystem:
+    def __init__(self):
+        self.mtrx = np.zeros((3, 3), dtype=float)
+
+    #------------------------------------------------        
+    def matrix(self):
+        """
+        Input the upper-triangular part of a 3×3 symmetric matrix.
+        """
+        for i in range(3):
+            for j in range(i, 3):
+                val = float(input(f"Enter entry ({i+1}, {j+1}): "))
+                self.mtrx[i, j] = val
+        # Mirror to lower triangle
+        for i in range(1, 3):
+            for j in range(i):
+                self.mtrx[i, j] = self.mtrx[j, i]
+        
+        print("\nHere is the full matrix:\n", self.mtrx, "\n")
+
+    #------------------------------------------------ 
+    def eigens(self):
+        """
+        Compute eigenvalues & eigenvectors (no forced sorting).
+        """
+        eigenvalues, eigenvectors = np.linalg.eig(self.mtrx)
+        self.eigenvalues  = eigenvalues
+        self.eigenvectors = eigenvectors
+        
+        print("Eigenvalues:\n", eigenvalues)
+        print("\nEigenvectors:\n", eigenvectors, "\n")
+
+    #------------------------------------------------ 
+    def products(self):
+        """
+        Verify orthogonality and check reconstruction.
+        """
+        ev = self.eigenvalues
+        V  = self.eigenvectors
+        VT = V.T
+        
+        print("Verification: eigenvectors are unit vectors and perpendicular:")
+        for i in range(3):
+            for j in range(i, 3):
+                dp = np.dot(VT[i], VT[j])
+                print(f"Dot product of v_{i} and v_{j}: {dp}")
+        
+        print("\nCheck: X^T A X (should be diagonal with eigenvalues):")
+        diag_test = VT @ (self.mtrx @ V)
+        print(diag_test, "\n")
+
+        print("Check: X Λ X^T (should reconstruct A):")
+        lambd = np.diag(ev)
+        reconstruct = V @ (lambd @ VT)
+        print(reconstruct, "\n")
+
+    #------------------------------------------------ 
+    def orientation(self):
+        """
+        For each eigenvector, compute spherical angles = (polar, azimuth).
+        angles[i,0] = polar = arccos(z_i)
+        angles[i,1] = azimuth = atan2(y_i, x_i)
+        """
+        V  = self.eigenvectors
+        VT = V.T
+        angles = np.zeros((3, 2), dtype=float)
+        eps = 1.0e-13
+
+        for i in range(3):
+            x, y, z = VT[i]  # i-th eigenvector
+            theta = math.acos(z)
+            # if sin(theta) ~ 0, set azimuth = 0
+            if abs(math.sin(theta)) < eps:
+                phi = 0.0
+            else:
+                phi = math.atan2(y, x)
+                if phi < 0.0:
+                    phi += 2.0 * math.pi
+            
+            angles[i, 0] = math.degrees(theta)
+            angles[i, 1] = math.degrees(phi)
+        
+        print("orientation angles")
+        print(angles, "\n")
+        self.angles = angles
+
+    #------------------------------------------------ 
+    def spherical(self):
+        """
+        Let user provide 3 pairs of angles + 3 eigenvalues,
+        then reconstruct the matrix from those exact vectors.
+        """
+        # Read 3 pairs of angles (in degrees)
+        angles = np.zeros((3, 2), dtype=float)
+        for i in range(3):
+            polar   = float(input(f"Enter polar angle of eigenvector {i+1} (in degrees): "))
+            azimuth = float(input(f"Enter azimuth angle of eigenvector {i+1} (in degrees): "))
+            angles[i, 0] = polar
+            angles[i, 1] = azimuth
+        
+        # Convert to radians
+        angles_rad = np.radians(angles)
+        
+        # Read 3 eigenvalues
+        ev = np.zeros(3, dtype=float)
+        for i in range(3):
+            ev[i] = float(input(f"Enter eigenvalue {i+1}: "))
+        
+        self.eigenvalues = ev
+        
+        # Build each eigenvector from its spherical angles
+        V = np.zeros((3, 3), dtype=float)
+        for i in range(3):
+            th = angles_rad[i, 0]  # polar
+            ph = angles_rad[i, 1]  # azimuth
+            x = math.sin(th) * math.cos(ph)
+            y = math.sin(th) * math.sin(ph)
+            z = math.cos(th)
+            # place in columns
+            V[0, i] = x
+            V[1, i] = y
+            V[2, i] = z
+        
+        # Construct matrix A = V Λ V^T
+        lambd = np.diag(ev)
+        A = V @ (lambd @ V.T)
+        
+        print("\nConstructed matrix:\n", A, "\n")
+        self.mtrx = A
+        self.eigenvectors = V
+
+        # Re-run the checks:
+        self.eigens()
+        self.products()
+        self.orientation()
+
+if __name__ == "__main__":
+    main()
